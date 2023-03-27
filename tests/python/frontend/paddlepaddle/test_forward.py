@@ -1782,6 +1782,20 @@ def test_forward_tan():
 def test_forward_tanh():
     pass
 
+@tvm.testing.uses_gpu()
+def test_forward_tanhshrink():
+    @paddle.jit.to_static
+    class TanhShrink1(nn.Layer):
+        @paddle.jit.to_static
+        def forward(self, inputs):
+            return nn.functional.tanhshrink(inputs)
+        
+    input_shapes = [[1, 2, 8, 8], [1, 3, 10, 10]]
+    for input_shape in input_shapes:
+        input_data = paddle.uniform(shape=input_shape, dtype="float32", min=-1, max=1)
+        verify_model(TanhShrink1(), input_data=input_data)
+    
+
 
 @tvm.testing.uses_gpu
 def test_forward_meshgrid():

@@ -2366,6 +2366,14 @@ def convert_swish(g, op, block):
     assert beta == 1.0, "Only support beta==1.0 for PaddlePaddle's swish"
     out = x * _op.tensor.sigmoid(x)
     g.add_node(op.output("Out")[0], out)
+    
+def convert_tanhshrink(g, op, block):
+    """Operator converter for tanhshrink."""
+    x = g.get_node(op.input("X")[0])
+    tanh = _op.tanh(x)
+    out = _op.subtract(x, tanh)
+    g.add_node(op.output("Out")[0], out)
+    
 
 
 def convert_take_along_axis(g, op, block):
@@ -2687,6 +2695,7 @@ _convert_map = {
     "take_along_axis": convert_take_along_axis,
     "tan": convert_unary_op,
     "tanh": convert_unary_op,
+    "tanhshrink": convert_tanhshrink,
     "top_k": convert_topk,
     "thresholded_relu": convert_thresholded_relu,
     "tile": convert_tile,
