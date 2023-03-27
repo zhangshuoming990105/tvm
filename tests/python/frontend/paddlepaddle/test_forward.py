@@ -1304,6 +1304,35 @@ def test_forward_pool2d():
         verify_model(Pool2D2(), input_data=input_data)
         verify_model(Pool2D3(), input_data=input_data)
 
+@tvm.testing.uses_gpu     
+def test_forward_pool3d():
+    class Pool3D1(nn.Layer):
+        @paddle.jit.to_static
+        def forward(self, inputs):
+            return nn.functional.avg_pool3d(inputs, kernel_size=2, stride=2, padding=0)
+        
+    class Pool3D2(nn.Layer):
+        @paddle.jit.to_static
+        def forward(self, inputs):
+            return nn.functional.adaptive_avg_pool3d(inputs, output_size=[3, 3, 3]) 
+    class Pool3D3(nn.Layer):
+        @paddle.jit.to_static
+        def forward(self, inputs):
+            return nn.functional.avg_pool3d(
+                inputs,
+                kernel_size=3,
+                stride=1,
+                padding=[1, 1, 1],
+                exclusive=False,
+                divisor_override=2.5,
+            )    
+    input_shapes = [[1, 2, 8, 8, 8], [1, 3, 10, 10, 10]]
+    for input_shape in input_shapes:
+        input_data = paddle.uniform(shape=input_shape, dtype="float32", min=-1, max=1)
+        verify_model(Pool3D1(), input_data=input_data)
+        verify_model(Pool3D2(), input_data=input_data)
+        verify_model(Pool3D3(), input_data=input_data)
+
 
 @tvm.testing.uses_gpu
 def test_forward_pad1d():

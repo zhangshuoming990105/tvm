@@ -1512,6 +1512,96 @@ def convert_pool2d(g, op, block):
         )
     g.add_node(op.output("Out")[0], out)
 
+def convert_pool3d(g, op, block):
+    """Operator converter for pool3d."""
+    adaptive = op.attr("adaptive")
+    ceil_mode = op.attr("ceil_mode")
+    global_pooling = op.attr("global_pooling")
+    ksize = op.attr("ksize")
+    paddings = op.attr("paddings")
+    padding_algorithm = op.attr("padding_algorithm")
+    pooling_type = op.attr("pooling_type")
+    data_format = op.attr("data_format")
+    
+    if global_pooling:
+        adaptive = True
+        ksize = [1, 1, 1]
+        
+    input_x = g.get_node(op.input("X")[0])
+    _, _, in_d, in_h, in_w = infer_shape(input_x)
+    
+    op_map = {
+        "avg" : "avg_pool3d",
+        "max" : "max_pool3d",
+    }
+    
+    strides = op.attr("strides")
+    if isinstance(strides, int):
+        strides = [strides, strides, strides]
+    if isinstance(ksize, int):
+        ksize = [ksize, ksize, ksize]
+    if isinstance(paddings, int):
+        paddings = [paddings] * 3
+    
+    if padding_algorithm =="VALID":
+        paddings = [0, 0, 0]
+    elif padding_algorithm == "SAME":
+        input_x = autopad(input_x, strides, ksize)
+        paddings = [0, 0, 0]
+    elif padding_algorithm == "EXPLICIT":
+        if len(paddings) == 3:
+            paddings = [paddings[0], paddings[1],paddings[2], paddings[0], paddings[1], paddings[2]]
+        elif len(paddings) == 6:
+            # front, back, top, down, left, right ->
+            # front, top, left, back, down, right
+            paddings = [paddings[0], paddings[3], paddings[1], paddings[4], paddings[2], paddings[5]]
+    else:
+        msg = 'Value {} in attribute "padding" of operator Pool3d is not "valid."'
+        raise tvm.error.OpAttributeInvalid(msg.format(padding_algorithm))
+
+    if (
+        not isinstance(in_d, _op.Expr)
+        and padding_algorithm == "EXPLICIT"
+        and in_d + paddings[0] + paddings[3] < ksize[0]
+    ):
+        ksize[0] = in_d
+    if (
+        not isinstance(in_h, _op.Expr)
+        and padding_algorithm == "EXPLICIT"
+        and in_h + paddings[1] + paddings[4] < ksize[1]
+    ):
+        ksize[1] = in_h
+    if (
+        not isinstance(in_w, _op.Expr)
+        and padding_algorithm == "EXPLICIT"
+        and in_w + paddings[2] + paddings[5] < ksize[2]
+    ):
+        ksize[2] = in_w
+    
+    if not adaptive:
+        if pooling_type == "avg":
+            exclusive = op.attr("exclusive")
+            out = _op.nn.avg_pool3d(
+                input_x,
+                pool_size=ksize,
+                strides=strides,
+                padding=paddings,
+                ceil_mode=ceil_mode,
+                count_include_pad=not exclusive,
+            )
+        else:
+            out = getattr(_op.nn, op_map[pooling_type])(
+            input_x, pool_size=ksize, strides=strides, padding=paddings, ceil_mode=ceil_mode
+            )
+    else:
+        out = getattr(_op.nn, "adaptive_" + op_map[pooling_type])(
+            input_x, output_size=ksize, layout=data_format
+        )
+    divisor_override = op.attr("divisor_override")
+    if divisor_override is not None:
+        out = _op.multiply(out, ksize[0]*ksize[1]*ksize[2])
+        out = _op.divide(out, divisor_override)
+    g.add_node(op.output("Out")[0], out)
 
 def convert_pow(g, op, block):
     """Operator converter for pow."""
@@ -2553,6 +2643,7 @@ _convert_map = {
     "pad3d": convert_padding,
     "pixel_shuffle": convert_pixel_shuffle,
     "pool2d": convert_pool2d,
+    "pool3d": convert_pool3d,
     "pow": convert_pow,
     "prelu": convert_prelu,
     "range": convert_range,
